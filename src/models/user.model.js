@@ -30,7 +30,7 @@ const UserShcema = mongoose.Schema({
     coverImage: {
         type: String, // cloudinary url
     },
-    wathHistory: [{
+    watchHistory: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: "Video"
     }],

@@ -4,6 +4,7 @@ import {User} from "../models/user.model.js"
 import { uploadcloudinary,deletcloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiresponse.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 const registeruser = asyncheadler( async (req,res) => {
     // res.status(300).json({
     //     message: "Chai aur code"
@@ -362,6 +363,75 @@ const creatPorfile = asyncheadler(async (req,res) => {
                 new ApiResponse(200,channel[0],"User Channel fetched successfully")
               )
 })
+
+const wathcHistory = asyncheadler(async (req,res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user._id)
+            }
+        },
+        {
+            $lookup: {
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            form: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as : "owner",
+                            pipeline: [
+                                {
+                                    $project: {
+                                        fullname: 1,
+                                        username: 1,
+                                        avatar: 1
+                                    }
+                                }
+                            ]
+                        },
+                    },
+                    {
+                        $addFields: {
+                            owner : {
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]  
+            }
+        },
+        {
+            $addFields: {
+                wathcHistory : "$wathcHistory"
+            }
+        },
+        {
+            $project: {
+                videoFile : 1,
+                owner : 1,
+                title : 1,
+                description: 1,
+                duration: 1,
+                views : 1 ,
+                description: 1,
+                isPublished: 1,
+                thumbnail: 1,
+            }
+        }
+    ])
+    if(!user || !user.length){
+        throw new ApiError(200,"Error While Find User wathcHistory");
+    }
+    return res.status(200)
+              .json(
+                new ApiResponse(200,user[0].wathcHistory,"user wathcHistory Fetched Successfully :")
+              )
+})
 export {
     registeruser,
     loginuser,
@@ -372,6 +442,7 @@ export {
     updateAccuontDetails,
     updateAvatar,
     updatecoverImage,
-    creatPorfile
+    creatPorfile,
+    wathcHistory
 } 
     
