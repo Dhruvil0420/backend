@@ -1,7 +1,7 @@
 import asyncheadler from "../utils/asynchedler.js";
 import { ApiError } from "../utils/apierror.js";
 import {User} from "../models/user.model.js"
-import { uploadcloudinary } from "../utils/cloudinary.js";
+import { uploadcloudinary,deletcloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiresponse.js";
 import jwt from "jsonwebtoken";
 const registeruser = asyncheadler( async (req,res) => {
@@ -103,6 +103,9 @@ const generateAccessAndRefreshToken  = async(userid) => {
 const loginuser =  asyncheadler(async (req,res) => {
     // get data form rq.body
     const {email,username,password} = req.body
+    // console.log(req.body);
+    // console.log(req.params);
+    // console.log(req.query);
     // check username or Email exites or not
     if(!(username || email)){
         throw new ApiError(400,"Email or Username Not Exites pleas Register");
@@ -205,10 +208,170 @@ const refreshAccessToken = asyncheadler(async(req,res) => {
             )
            )
 })
+
+const changeCurrentPassword = asyncheadler(async(req,res) => {
+    const {oldpassword,newpassword} = req.body
+    const user = await findById(req.user?._id);
+    const passwordcorrect = await user.isPasswordCorrect(oldpassword);
+    if(!passwordcorrect){
+        throw new ApiError(400,"OldPassWord is Incorrect ");
+    }
+    user.password = newpassword;
+    await user.save({validateBeforSave: false})
+    return res.
+            status(200)
+            .json(
+                new ApiResponse(200,{},"Password is update Scuccessfully")
+            )
+})
+
+const getCurrentUser = asyncheadler(async(req,res) => {
+    return res.status(200)
+              .json(new ApiResponse(200,req.user,"Current User Find Succesfully ::"));
+})
+
+const updateAccuontDetails = asyncheadler(async(req,res) => {
+    const {fullname,email} = req.body;
+    if(!(fullname && email)){
+        throw new ApiError(400,"All Fileds Must Be Reqired");
+    }
+    const user = await User.findByIdAndUpdate(req.user?._id,
+        {
+            $set: {
+                fullname: fullname,
+                email : email
+            }
+        },
+        {new : true}).select(" -password");
+
+        return res.status(200)
+                  .json(new ApiResponse(200,user,"Account Information Update Sucessfully"));
+})
+
+const updateAvatar = asyncheadler(async(req,res) => {
+    const user = await User.findById(req.user._id);
+    if (!user) throw new ApiError(404, "User not found");
+    const avtarlocalpath = req.file?.path;
+    if(!avtarlocalpath){
+        throw new ApiError(400,"Avtar is Missing ::");
+    }
+    // upload on clodinary
+    const newavtar = await uploadcloudinary(avtarlocalpath);
+    if(!newavtar.url){
+        throw new ApiError(400,"Error Uploding Avtar on Cloudinary::");
+    }
+    // delet old iamge
+    if(user.avtar){
+        await deletcloudinary(user.coverImage);
+    } 
+    // 3. Update user fields directly
+    user.avatar = newavtar.url;
+
+    // 4. Save the updated user document
+    await user.save();
+    user.password = undefined;
+    // 5. Return success
+        return res.status(200)
+        .json(new ApiResponse(200,avtar,"Avtar Update Sucessfully"));
+})
+
+const updatecoverImage = asyncheadler(async(req,res) => {
+    const coverImagelocalpath = req.file?.path;
+    if(!coverImagelocalpath){
+        throw new ApiError(200,"coverImage is Missing ::");
+    }
+    const coverImage = await uploadcloudinary(coverImagelocalpath);
+    if(!coverImage.url){
+        throw new ApiError(400,"Error While Uploding coverImage on clodinary");
+    }
+    await User.findByIdAndUpdate(req.user?._id,
+    {
+        $set: {
+            coverImage : coverImage.url
+        }
+    },
+    {
+        new : true
+    })
+    return res.status(200)
+                  .json(new ApiResponse(200,coverImage.url,"CoverImage Update Sucessfully"));
+})
+
+const creatPorfile = asyncheadler(async (req,res) => {
+    const {username} = req.body
+    if(!username?.trim()){
+        throw new ApiError(400,"User is Nor exites ");
+    }
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username : username?.toLowerCase()
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id", // this id is chanle id like : Dhruvil id Which open by Jay
+                foreignField : "channel",
+                as: "subscribers"
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField : "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            $addFields:{
+                subcriberscount: {
+                    $size: "$subscribers"
+                },
+                chanlesubscribedcount: {
+                    $size: "$subscribedTo"
+                },
+                isSubscribed: {
+                    $cond: {
+                        if: {$in: [req.user?._id == "$subscriptions.subscriber"]},              
+                                                     // req.user._id is who is open chanle        
+                        then : true,
+                        else : false
+                    }
+                }
+            },
+            $project:{
+                fullname: 1,
+                avatar: 1,
+                coverImage: 1,
+                email: 1,
+                chanlesubscribedcount: 1,
+                subcriberscount: 1,
+                isSubscribed: 1,
+                username: 1,
+                createdAt: 1
+            }
+        },                   
+    ])
+    if(!channel?.length){
+        throw new ApiError(404,"channel does not exists ");
+    }
+    return res.status(200)
+              .json(
+                new ApiResponse(200,channel[0],"User Channel fetched successfully")
+              )
+})
 export {
     registeruser,
     loginuser,
     logoutuser,
-    refreshAccessToken
+    refreshAccessToken,
+    changeCurrentPassword,
+    getCurrentUser,
+    updateAccuontDetails,
+    updateAvatar,
+    updatecoverImage,
+    creatPorfile
 } 
     

@@ -1,6 +1,7 @@
 import {v2 as cloudinary} from "cloudinary";
 import fs from "fs";
 import { deflate } from "zlib";
+import { ApiError } from "./apierror.js";
 
 // Configuration
     cloudinary.config({ 
@@ -28,5 +29,25 @@ const uploadcloudinary = async function (localpath) {
         return null;
     }
 }
+const deletcloudinary = async function (path) {
+    try {
+        if(!path) return null;
+        const response = await cloudinary.uploader.destroy(path);
+        if (response.result === "ok") {
+            console.log(" Old file deleted successfully:", path);
+        } 
+        else if (response.result === "not found") {
+            console.warn(" Image not found on Cloudinary:", path);
+        } 
+        else {
+            console.error("Cloudinary deletion failed:", response);
+        }
+        return response;
+    } 
+    catch (error) {
+        throw new ApiError(400,"Error While Deleting Old Image on cloudinary")
+    }
+    
+}
 
-export {uploadcloudinary};
+export {uploadcloudinary,deletcloudinary};
