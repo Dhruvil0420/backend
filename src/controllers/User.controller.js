@@ -91,6 +91,7 @@ const generateAccessAndRefreshToken  = async(userid) => {
         const accessToken = await user.generateAccessToken();
         const refreshToken = await user.generateRefreshToken();
         user.refreshToken = refreshToken;
+        await user.save({ validateBeforeSave: false }); 
         return { 
             accessToken, 
             refreshToken 
@@ -130,6 +131,8 @@ const loginuser =  asyncheadler(async (req,res) => {
 
     // access And refrece token is send user 
     const {accessToken,refreshToken} = await generateAccessAndRefreshToken (user._id);
+    console.log(accessToken);
+    console.log(refreshToken);
     const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
     // send cookie Secure cookies
     const options = {
@@ -177,53 +180,67 @@ const logoutuser = asyncheadler(async(req,res) => {
     .json(new ApiResponse(200,{},"USer Logout"))
 })
 
-const refreshAccessToken = asyncheadler(async(req,res) => {
+const refreshAccessToken = asyncheadler(async (req, res) => {
     const incomingrefreshToken = req.cookies.refreshToken || req.body.refreshToken;
-    if(!incomingrefreshToken){
-        throw new ApiError(401,"UnAuthorized Request")
+    if (!incomingrefreshToken) {
+        throw new ApiError(401, "Unauthorized Request");
     }
-    const decode = jwt.verify(incomingrefreshToken,process.env.REFRESH_TOKEN_SECRET)
+
+    const decode = jwt.verify(incomingrefreshToken, process.env.REFRESH_TOKEN_SECRET);
     const user = await User.findById(decode?._id);
-    if(!user){
-        throw new ApiError(401,"Invaild RefreshToken");
+    if (!user) {
+        throw new ApiError(401, "Invalid Refresh Token");
     }
-    if(incomingrefreshToken !== user.refreashToken){
-        throw new ApiError(401,"Refresh Token Is Expried or Does Not Match");
+
+    if (incomingrefreshToken !== user.refreshToken) {
+        throw new ApiError(401, "Refresh Token is expired or does not match");
     }
+
     const options = {
-        httpOnly : true,
-        secure : true
-    }
-    const {accessToken,newrefreashToken} = await generateAccessAndRefreshToken(user._id);
-    
+        httpOnly: true,
+        secure: true
+    };
+
+    const { accessToken, refreshToken: newRefreshToken } =
+        await generateAccessAndRefreshToken(user._id);
+
     return res
-           .status(200)
-           .cookie("acceshToken",accessToken,options)
-           .cookie("refreshToken",newrefreashToken,options)
-           .json(
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", newRefreshToken, options)
+        .json(
             new ApiResponse(200,
-                {
-                    accessToken,refreashToken : newrefreashToken
-                },
-                "AccesshToken Refreshed Withour Erorr"
+                { accessToken, refreshToken: newRefreshToken },
+                "Access Token refreshed successfully"
             )
-           )
-})
+        );
+});
+
 
 const changeCurrentPassword = asyncheadler(async(req,res) => {
-    const {oldpassword,newpassword} = req.body
-    const user = await findById(req.user?._id);
-    const passwordcorrect = await user.isPasswordCorrect(oldpassword);
-    if(!passwordcorrect){
-        throw new ApiError(400,"OldPassWord is Incorrect ");
-    }
-    user.password = newpassword;
-    await user.save({validateBeforSave: false})
-    return res.
-            status(200)
-            .json(
-                new ApiResponse(200,{},"Password is update Scuccessfully")
-            )
+    const { oldpassword, newpassword } = req.body;
+
+  if (!oldpassword || !newpassword) {
+    throw new ApiError(400, "Both old and new passwords are required");
+  }
+
+  const user = await User.findById(req.user?._id);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const passwordCorrect = await user.isPasswordCorrect(oldpassword);
+  if (!passwordCorrect) {
+    throw new ApiError(400, "Old password is incorrect");
+  }
+
+  user.password = newpassword;
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password updated successfully"));
 })
 
 const getCurrentUser = asyncheadler(async(req,res) => {
@@ -262,8 +279,8 @@ const updateAvatar = asyncheadler(async(req,res) => {
         throw new ApiError(400,"Error Uploding Avtar on Cloudinary::");
     }
     // delet old iamge
-    if(user.avtar){
-        await deletcloudinary(user.coverImage);
+    if(user.avatar){
+        await deletcloudinary(user.avatar);
     } 
     // 3. Update user fields directly
     user.avatar = newavtar.url;
@@ -273,7 +290,7 @@ const updateAvatar = asyncheadler(async(req,res) => {
     user.password = undefined;
     // 5. Return success
         return res.status(200)
-        .json(new ApiResponse(200,avtar,"Avtar Update Sucessfully"));
+        .json(new ApiResponse(200,user,"Avtar Update Sucessfully"));
 })
 
 const updatecoverImage = asyncheadler(async(req,res) => {
@@ -299,7 +316,7 @@ const updatecoverImage = asyncheadler(async(req,res) => {
 })
 
 const creatPorfile = asyncheadler(async (req,res) => {
-    const {username} = req.body
+    const { username } = req.params;  
     if(!username?.trim()){
         throw new ApiError(400,"User is Nor exites ");
     }
@@ -315,7 +332,7 @@ const creatPorfile = asyncheadler(async (req,res) => {
                 localField: "_id", // this id is chanle id like : Dhruvil id Which open by Jay
                 foreignField : "channel",
                 as: "subscribers"
-            }
+            },
         },
         {
             $lookup: {
@@ -326,34 +343,33 @@ const creatPorfile = asyncheadler(async (req,res) => {
             }
         },
         {
-            $addFields:{
-                subcriberscount: {
-                    $size: "$subscribers"
-                },
-                chanlesubscribedcount: {
-                    $size: "$subscribedTo"
-                },
+            $addFields: {
+                subcriberscount: { $size: "$subscribers" },
+                chanlesubscribedcount: { $size: "$subscribedTo" },
                 isSubscribed: {
                     $cond: {
-                        if: {$in: [req.user?._id == "$subscriptions.subscriber"]},              
-                                                     // req.user._id is who is open chanle        
-                        then : true,
-                        else : false
+                        if: { 
+                        $in: [req.user?._id, "$subscribers.subscriber"]
+                        },
+                        then: true,
+                        else: false
                     }
                 }
-            },
-            $project:{
-                fullname: 1,
-                avatar: 1,
-                coverImage: 1,
-                email: 1,
-                chanlesubscribedcount: 1,
-                subcriberscount: 1,
-                isSubscribed: 1,
-                username: 1,
-                createdAt: 1
             }
         },                   
+        {
+            $project: {
+            fullname: 1,
+            avatar: 1,
+            coverImage: 1,
+            email: 1,
+            chanlesubscribedcount: 1,
+            subcriberscount: 1,
+            isSubscribed: 1,
+            username: 1,
+            createdAt: 1
+            }
+        }
     ])
     if(!channel?.length){
         throw new ApiError(404,"channel does not exists ");
@@ -380,7 +396,7 @@ const wathcHistory = asyncheadler(async (req,res) => {
                 pipeline: [
                     {
                         $lookup: {
-                            form: "users",
+                            from: "users",
                             localField: "owner",
                             foreignField: "_id",
                             as : "owner",
@@ -403,7 +419,7 @@ const wathcHistory = asyncheadler(async (req,res) => {
                         }
                     }
                 ]  
-            }
+            },
         },
         {
             $addFields: {
@@ -422,7 +438,7 @@ const wathcHistory = asyncheadler(async (req,res) => {
                 isPublished: 1,
                 thumbnail: 1,
             }
-        }
+        },
     ])
     if(!user || !user.length){
         throw new ApiError(200,"Error While Find User wathcHistory");

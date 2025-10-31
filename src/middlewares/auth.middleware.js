@@ -15,7 +15,7 @@ export const verifyJWt = asyncheadler(async(req,res,next) => {
             throw new ApiError(401,"Invaild Access Token")
         }
         req.user = user;
-        next(); 
+        next();
     } 
     catch (error) {
         throw new ApiError(401,error?.message || "Invaild Access Token ")

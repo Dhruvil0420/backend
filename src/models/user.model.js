@@ -36,8 +36,7 @@ const UserShcema = mongoose.Schema({
     }],
     password:{
         type:String,
-        required: true,
-        unique:[true,"Password Is required"],
+        unique:[true,"Password Is required"]
     },
     refreashToken:{
         type: String,
@@ -45,16 +44,15 @@ const UserShcema = mongoose.Schema({
 
 },{timestamps: true});
 
-UserShcema.pre("save", async function (next){
-    if(!this.isModified("password")) return next();
-    this.password = bcrypt.hash(this.password, 10);
+UserShcema.pre("save", async function (next) {
+    if (!this.isModified("password")) return next();
+    this.password = await bcrypt.hash(this.password, 10);
     next();
 });
 
-UserShcema.methods.isPasswordCorrect = 
-async function (password) {
-   return await bcrypt.compare(password,this.password)
-}
+UserShcema.methods.isPasswordCorrect = async function(password){
+    return await bcrypt.compare(password, this.password);
+};
 UserShcema.methods.generateAccessToken = 
 function () {
     return jwt.sign(
